@@ -3,6 +3,12 @@
 clearvars; clear; close all; clc;rng default; 
 setname = '2DofRobot';
 
+%check Matlab version
+vers=version('-release');
+if(str2double(vers(end-2:end-1))<17)
+    error('MATLAB R2017a or a newer release is required!');
+end
+
 %% Set Parameters
 disp('Setting Parameters...')
 % Robot kinematrics
