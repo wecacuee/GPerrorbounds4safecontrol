@@ -66,7 +66,7 @@ ls = exp(gprModel.Impl.ThetaHat(1:E));  sf = exp(gprModel.Impl.ThetaHat(end));
 
 
 %% Test Lyapunov condition
-negLogDeltaLs = 1:4;
+negLogDeltaLs = linspace(1, 6, 100);
 Lfhs = []; deltaLs = [];
 Lfs = []; Lfprobs = [];
 for negLogDeltaL = negLogDeltaLs
@@ -78,5 +78,15 @@ for negLogDeltaL = negLogDeltaLs
     Lfprobs = [Lfprobs; Lfprob];
 end
 
+f1 = figure;
 semilogx(deltaLs, Lfhs);
-scatter(Lfprobs, Lfs);
+title('\delta_L vs L_f analytical');
+xlabel('\delta_L');
+ylabel('L_f');
+print(f1, 'delta_L_vs_L_f_analytical.pdf', '-dpdf', '-bestfit');
+f2 = figure;
+semilogx(Lfprobs, Lfs, '*');
+title('\delta_L vs L_f numerical');
+xlabel('\delta_L');
+ylabel('L_f');
+print(f2, 'delta_L_vs_L_f_numerical.pdf', '-dpdf', '-bestfit');

@@ -1,17 +1,14 @@
 function [Lfh, Lf, Lfprob] = numericalLipschitz(gprModel, pdyn, Xte, deltaL, Nte, E)
 
 pFeLi.f = @(x) sampleGPR(gprModel,x'); pFeLi.g = pdyn.g;
-probfun = @(x) nth_output(2, @sampleGPR, gprModel,x');
+
 kfcn = gprModel.Impl.Kernel.makeKernelAsFunctionOfXNXM(gprModel.Impl.ThetaHat); % What does this do?
 ls = exp(gprModel.Impl.ThetaHat(1:E));  sf = exp(gprModel.Impl.ThetaHat(end));
 
 
 %% Test Lyapunov condition
 disp('Setup Lyapunov Stability Test...')
-gradnorms = sqrt(sum(gradestj(pFeLi.f,Xte).^2,1));
-grad_probs = probfun(Xte);
-[Lf, idx] =  max(gradnorms);
-Lfprob = grad_probs(idx);
+
 
 Lk = norm(sf^2*exp(-0.5)./ls);
 
@@ -20,6 +17,24 @@ dkdxi = @(x,xp,i)  -(x(i,:)-xp(i,:))./ls(i)^2 .* k(x,xp);
 ddkdxidxpi = @(x,xp,i) ls(i)^(-2) * k(x,xp) +  (x(i,:)-xp(i,:))/ls(i)^2 .*dkdxi(x,xp,i);
 dddkdxidxpi = @(x,xp,i) -ls(i)^(-2) * dkdxi(x,xp,i) - ls(i)^(-2) .*dkdxi(x,xp,i) ...
     +  (x(i,:)-xp(i,:))/ls(i)^2 .*ddkdxidxpi(x,xp,i);
+
+%% Compute Lipschitz constant numerically
+% 
+%%% Compute Lipschitz constant by using derivative kernel 
+%%% Could not use it as a function because ddkdxidxpi wont pass as an
+%%% argument
+grad_f_mu = zeros(size(Xte)); % must be ExN
+[~, N] = size(Xte);
+grad_f_sigma = zeros(E, N);
+for e = 1:E
+    grad_f_sigma(e, :) = ddkdxidxpi(Xte, Xte, e);
+end
+grad_fs_i = randn(E, N).*grad_f_sigma + grad_f_mu;
+grad_fs_prob = normpdf(grad_fs_i, grad_f_mu, grad_f_sigma) * 1e-2;
+gradnorms = sqrt(sum(grad_fs_i.^2,1));
+[Lf, idx] =  max(gradnorms);
+Lfprob = grad_fs_prob(idx);
+%%% sampleGPRFromKnl pasted
 
 r = max(pdist(Xte')); Lfs = zeros(E,1);
 for e=1:E
