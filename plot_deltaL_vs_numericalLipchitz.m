@@ -47,7 +47,7 @@ Ntrajplot = 100;
 % Lyapunov test
 tau = 1e-8;     % Grid distance
 delta = 0.01;     % Probability for error bound
-deltaL = 0.01;     % Probability for Lipschitz constant
+% deltaL = 0.01;     % Probability for Lipschitz constant
 
 %%  Generate Training Points
 disp('Generating Training Points...')
@@ -59,59 +59,24 @@ Ytr = pdyn.f(Xtr) +  sn.*randn(1,Ntr);
 disp('Learning GP model...')
 gprModel = fitrgp(Xtr',Ytr',optGPR{:});
 pFeLi.f = @(x) predict(gprModel,x'); pFeLi.g = pdyn.g;
+
 sigfun = @(x) nth_output(2, @predict, gprModel,x');
 kfcn = gprModel.Impl.Kernel.makeKernelAsFunctionOfXNXM(gprModel.Impl.ThetaHat); % What does this do?
 ls = exp(gprModel.Impl.ThetaHat(1:E));  sf = exp(gprModel.Impl.ThetaHat(end));
 
 
 %% Test Lyapunov condition
-disp('Setup Lyapunov Stability Test...')
-
-Lf =  max(sqrt(sum(gradestj(pdyn.f,Xte).^2,1)));
-Lk = norm(sf^2*exp(-0.5)./ls);
-
-k = @(x,xp) sf^2 * exp(-0.5*sum((x-xp).^2./ls.^2,1));
-dkdxi = @(x,xp,i)  -(x(i,:)-xp(i,:))./ls(i)^2 .* k(x,xp);
-ddkdxidxpi = @(x,xp,i) ls(i)^(-2) * k(x,xp) +  (x(i,:)-xp(i,:))/ls(i)^2 .*dkdxi(x,xp,i);
-dddkdxidxpi = @(x,xp,i) -ls(i)^(-2) * dkdxi(x,xp,i) - ls(i)^(-2) .*dkdxi(x,xp,i) ...
-    +  (x(i,:)-xp(i,:))/ls(i)^2 .*ddkdxidxpi(x,xp,i);
-
-r = max(pdist(Xte')); Lfs = zeros(E,1);
-for e=1:E
-    maxk = max(ddkdxidxpi(Xte,Xte,e));
-    Lkds = zeros(Nte,1);
-    for nte = 1:Nte
-       Lkds(nte) = max(dddkdxidxpi(Xte,Xte(:,nte),e));
-    end
-    Lkd = max(Lkds);  
-    Lfs(e) = sqrt(2*log(2*E/deltaL))*maxk + 12*sqrt(6*E)*max(maxk,sqrt(r*Lkd)); % Eq (11) from the paper
-end
-Lfh =  norm(Lfs); % Eq (11) continued
-disp("Computed Lipschtz constant is ");
-disp(Lfh); 
-disp("Numerical est"); disp(Lf);
-disp("Lh");
-Lnu = Lk*sqrt(Ntr)*norm(gprModel.Alpha);
-omega = sqrt(2*tau*Lk*(1+Ntr*norm(kfcn(Xtr',Xtr')+sn^2*eye(Ntr))*sf^2));
-beta = 2*log((1+((max(XteMax)-min(XteMin))/tau))^E/delta);
-gamma = tau*(Lnu+Lfh) + sqrt(beta)*omega;
-
-Lyapincr = @(X,r) sqrt(sum((X-r).^2,1))' <= (sqrt(beta).*sigfun(X)+gamma)/(pFeLi.kc*sqrt(pFeLi.lam^2+1));
-
-%% Simulate System with Feedback Linearization and PD Controller
-disp('Simulation...')
-dyn = @(t,x) dynAffine(t,x,@(t,x) ctrlFeLi(t,x,pFeLi,ref),pdyn);
-[T,Xsim] = ode45(dyn,linspace(0,Tsim,Nsim),x0); Xsim= Xsim';
-Xd = ref(T);Xd = Xd(1:E,:);
-AreaError = zeros(Nsim,1); ihull = cell(Nsim,1);
-for nsim=1:Nsim
-    ii = find(Lyapincr(Xte,Xd(1:2,nsim)));
-    ihull{nsim} = ii(convhull(Xte(:,ii)','simplify',true));
-    AreaError(nsim) = polyarea(Xte(1,ihull{nsim}),Xte(2,ihull{nsim}));
+negLogDeltaLs = 1:4;
+Lfhs = []; deltaLs = [];
+Lfs = []; Lfprobs = [];
+for negLogDeltaL = negLogDeltaLs
+    deltaL = 10^(-negLogDeltaL);
+    deltaLs = [deltaLs; deltaL];
+    [Lfh, Lf, Lfprob] = numericalLipschitz(gprModel, pdyn, Xte, deltaL, Nte, E);
+    Lfhs = [Lfhs; Lfh];
+    Lfs = [Lfs; Lf];
+    Lfprobs = [Lfprobs; Lfprob];
 end
 
-
-%% Viualization
-disp('Plotting Results...')
-vis_2D;
-disp('Pau');
+semilogx(deltaLs, Lfhs);
+scatter(Lfprobs, Lfs);
